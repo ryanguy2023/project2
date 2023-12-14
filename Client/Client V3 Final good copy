@@ -1,0 +1,124 @@
+#Ryan Groskopf
+#student ID: 100880623
+import socket
+import json
+import time
+import os
+from pathlib import Path
+import PySimpleGUI as sg
+import sys
+
+def collate_data():
+    # Collecting data
+    emmc_clock_speed_output = os.popen('vcgencmd measure_clock emmc').readline()
+    core_temp_output = os.popen('vcgencmd measure_temp').readline()
+    arm_clock_speed_output = os.popen('vcgencmd measure_clock arm').readline()
+    pixel_clock_speed_output = os.popen('vcgencmd measure_clock pixel').readline()
+    sdram_voltage_output = os.popen('vcgencmd measure_volts sdram_p').readline()
+
+    # Extracting numeric part from the clock speed string and converting to float
+    emmc_clock_speed = float(emmc_clock_speed_output.split('=')[1].strip()[:-1])
+
+    # Extracting numeric part from the temperature string and converting to float
+    core_temp = float(core_temp_output.split('=')[1].strip()[:-2])
+
+    # Extracting numeric part from the clock speed string and converting to float
+    arm_clock_speed = float(arm_clock_speed_output.split('=')[1].strip()[:-1])
+    pixel_clock_speed = float(pixel_clock_speed_output.split('=')[1].strip()[:-1])
+
+    # Extracting numeric part from the voltage string and converting to float
+    sdram_voltage = float(sdram_voltage_output.split('=')[1].strip()[:-1])
+
+    # Formatting data
+    emmc_clock_speed = round(emmc_clock_speed, 1)  # Restrict to 1 decimal place
+    core_temp = round(core_temp, 1)  # Restrict to 1 decimal place
+    arm_clock_speed = round(arm_clock_speed, 1)  # Restrict to 1 decimal place
+    pixel_clock_speed = round(pixel_clock_speed, 1)  # Restrict to 1 decimal place
+    sdram_voltage = round(sdram_voltage, 1)  # Restrict to 1 decimal place
+
+    return {
+        "thing": [{"temp": core_temp}],
+        "emmc_clock_speed": emmc_clock_speed, 
+        "arm_clock_speed": arm_clock_speed,
+        "pixel_clock_speed": pixel_clock_speed,
+        "sdram_voltage": sdram_voltage,
+    }
+
+IS_RPI = Path("/etc/rpi-issue").exists()  # used to check if we're using the Pi learnt from Chat GPT
+
+if not IS_RPI:
+    print("This client cannot be run on the PC, it must be run on the Raspberry Pi.")
+    sys.exit(1)
+    #this closes the system if its not on a PI
+
+try:
+    sock = socket.socket()
+except socket.error as err:
+    print('Socket error because of %s' % (err))
+    sys.exit(1)
+
+port = 1500
+address = "10.102.13.198"  # to run on Pi with a local server or for pc change ip too 198
+
+try:
+    sock.connect((address, port))
+    connection_status = "Connected to Server"
+except socket.gaierror:
+    connection_status = "Not Connected to Server - Error resolving host"
+except socket.error as e:
+    connection_status = f"Not Connected to Server - Socket error: {e}"
+
+terminate_flag = False  #signal termination 
+
+layout = [
+    #layout for box
+    [sg.Text("Iteration: ", key="iteration_text"), sg.Text('', size=(4, 1), font=('Any', 20), justification='center', key='-LEDO-')],
+    [sg.Text(connection_status, key="connection_status")],
+    [sg.Button("Exit")]
+]
+
+window = sg.Window("Client GUI", layout, finalize=True)
+prev_iteration = -1
+
+try:
+    for i in range(52):
+        if terminate_flag:
+            break
+        # Collect data from the Raspberry Pi
+        data = collate_data()
+        # Create a JSON object with the collected data
+        JsonResult = {
+            "thing": [{"temp": data["thing"][0]["temp"]}],
+            "emmc_clock_speed": data["emmc_clock_speed"],  
+            "arm_clock_speed": data["arm_clock_speed"],
+            "pixel_clock_speed": data["pixel_clock_speed"],
+            "sdram_voltage": data["sdram_voltage"],
+            "iteration": i
+        }
+        
+         # Convert the JSON object to a string
+        JsonResult = json.dumps(JsonResult)
+        
+        json_data = json.loads(JsonResult)
+
+        # Update LED status only when a new iteration comes in
+        if json_data["iteration"] != prev_iteration:
+            window["-LEDO-"].update('O' if json_data["iteration"] % 2 == 0 else '●')
+            time.sleep(0.5)
+            prev_iteration = json_data["iteration"]
+            
+            # Update iteration text and connection status on the GUI
+        window["iteration_text"].update(f"Iteration: {json_data['iteration']}")
+        window["connection_status"].update(connection_status)
+        # Send the JSON string to the server via the socket
+        sock.send(bytearray(JsonResult, "UTF-8"))
+        time.sleep(2)
+        # Wait for 2 seconds before the next iteration
+        event, values = window.read(timeout=0)
+        if event == sg.WIN_CLOSED or event == "Exit":
+            terminate_flag = True
+except Exception as e:
+    print(f"Error: {e}")
+finally:
+    window.close()
+    sock.close()  # Close the socket when exiting
