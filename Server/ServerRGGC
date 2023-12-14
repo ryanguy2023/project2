@@ -1,0 +1,95 @@
+#Ryan Groskopf
+#student ID: 100880623
+import socket
+import json
+import time
+import sys
+import PySimpleGUI as sg
+
+def create_layout():
+    return [
+        [sg.Text("Core Temperature: ", key="core_temp")],
+        [sg.Text("EMMC Clock Speed: ", key="emmc_clock_speed")], 
+        [sg.Text("Arm Clock Speed: ", key="arm_clock_speed")],
+        [sg.Text("Pixel Clock Speed: ", key="pixel_clock_speed")],
+        [sg.Text("SDRAM Voltage: ", key="sdram_voltage")],
+        [sg.Text("Iteration: ", key="iteration_text")],  #iteration counter
+        [sg.Exit()]  #PySimpleGUI Exit button
+    ]
+
+terminate_flag = False  # Flag to signal termination
+window = None  # Initialize the window variable
+
+def create_window():
+    layout = create_layout()
+    return sg.Window("Server GUI", layout, finalize=True)
+
+def main():
+    global terminate_flag  # Ensure that terminate_flag is recognized as a global variable
+    global window
+
+    layout = create_layout()
+    window = sg.Window("Server GUI", layout, finalize=True)
+
+    iteration_count = 0  # Counter for received iterations
+
+    try:
+        while True:
+            if terminate_flag:
+                break
+
+            json_received = c.recv(1024)
+            if not json_received:
+                exit()
+
+            data = json.loads(json_received)
+            
+            ret1 = data["thing"][0]["temp"]
+            ret2 = data["emmc_clock_speed"]  # Updated key
+            ret3 = data["arm_clock_speed"]
+            ret4 = data["pixel_clock_speed"]
+            ret5 = data["sdram_voltage"]
+            ret6 = data["iteration"]
+
+            # Update the PySimpleGUI window
+            window["core_temp"].update(f"Core Temperature: {ret1}")
+            window["emmc_clock_speed"].update(f"EMMC Clock Speed: {ret2}")
+            window["arm_clock_speed"].update(f"Arm Clock Speed: {ret3}")
+            window["pixel_clock_speed"].update(f"Pixel Clock Speed: {ret4}")
+            window["sdram_voltage"].update(f"SDRAM Voltage: {ret5}")
+            window["iteration_text"].update(f"Iteration: {ret6}")  # Update iteration counter
+
+            time.sleep(1)
+
+            iteration_count += 1
+            if iteration_count == 52:
+                break
+
+            event, values = window.read(timeout=0)
+            if event == sg.WINDOW_CLOSED or event == "Exit":
+                terminate_flag = True
+    except KeyboardInterrupt:
+        exit()
+    finally:
+        if window:
+            window.close()
+
+if __name__ == '__main__':
+    sock = socket.socket()
+    print("Socket created ...")
+
+    port = 1500
+    sock.bind(('0.0.0.0', port))  # to run on Pi with a local client
+    sock.listen(5)
+
+    print('Socket is listening...')
+    c, addr = sock.accept()
+    print('Got connection from', addr)  # locks to client I.P
+
+    try:
+        main()
+    except Exception as e:
+        print(f"Error: {e}")
+    finally:
+        sock.close()  # Close the socket before exiting
+
