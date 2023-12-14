@@ -1,0 +1,85 @@
+import socket
+import json
+import time
+import sys  
+import PySimpleGUI as sg
+
+def create_layout():
+    return [
+        [sg.Text("Core Temperature: ", key="core_temp")],
+        [sg.Text("Voltage: ", key="voltage")],
+        [sg.Text("Arm Clock Speed: ", key="arm_clock_speed")],
+        [sg.Text("Pixel Clock Speed: ", key="pixel_clock_speed")],
+        [sg.Text("SDRAM Voltage: ", key="sdram_voltage")],
+        [sg.Exit()]  
+    ]
+
+def main():
+    layout = create_layout()
+    window = sg.Window("Server GUI", layout, finalize=True)
+    
+    iteration_count = 0  
+
+    try:
+        while True:
+            json_received = c.recv(1024)
+            if not json_received:
+                print("Oops")
+                exit()
+
+            data = json.loads(json_received)
+            ret1 = data["thing"][0]["temp"]
+            ret2 = data["volts"]
+            ret3 = data["arm_clock_speed"]
+            ret4 = data["pixel_clock_speed"]
+            ret5 = data["sdram_voltage"]
+            ret6 = data["iteration"]
+
+            print("Received data:")
+            print("Core Temperature:", ret1)
+            print("Voltage:", ret2)
+            print("Arm Clock Speed:", ret3)
+            print("Pixel Clock Speed:", ret4)
+            print("SDRAM Voltage:", ret5)
+            print("Iteration:", ret6)
+
+         
+            window["core_temp"].update(f"Core Temperature: {ret1}")
+            window["voltage"].update(f"Voltage: {ret2}")
+            window["arm_clock_speed"].update(f"Arm Clock Speed: {ret3}")
+            window["pixel_clock_speed"].update(f"Pixel Clock Speed: {ret4}")
+            window["sdram_voltage"].update(f"SDRAM Voltage: {ret5}")
+
+            time.sleep(1)
+
+            iteration_count += 1
+            if iteration_count == 51:
+                break
+
+            event, values = window.read(timeout=0)
+            if event == sg.WINDOW_CLOSED or event == "Exit":
+                break
+    except KeyboardInterrupt:
+        print("Bye....")
+        exit()
+    finally:
+        window.close()
+
+if __name__ == '__main__':
+    sock = socket.socket()
+    print("Socket created ...")
+
+    port = 1501
+    sock.bind(('10.102.13.82', port)) 
+    sock.listen(5)
+
+    print('Socket is listening...')
+    c, addr = sock.accept()
+    print('Got connection from', addr)
+
+    try:
+        main()
+    except Exception as e:
+        print(f"Error: {e}")
+    finally:
+        sock.close()
