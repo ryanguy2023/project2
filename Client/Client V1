@@ -1,0 +1,79 @@
+Client V1: 
+import socket
+import json
+import time
+import os
+from pathlib import Path
+import PySimpleGUI as sg
+
+IS_RPI = Path("/etc/rpi-issue").exists()  # used to check we're using the Pi
+
+if IS_RPI:
+    print("Correct Hardware")
+    try:
+        sock = socket.socket()
+    except socket.error as err:
+        print('Socket error because of %s' % (err))
+        sys.exit(1)
+
+    port = 1500
+    address = "10.102.13.82"  # to run on Pi with a local server
+
+    try:
+        sock.connect((address, port))
+    except socket.gaierror:
+        print('There is an error resolving the host')
+    except socket.error as e:
+        print(f'Socket error: {e}')
+        sys.exit(1)
+
+layout = [
+    [sg.Text("Iteration: ", key="iteration")],
+    [sg.Text("Core Temperature: ", key="core_temp")],  # Only keep "core_temp"
+    [sg.Text("Voltage: ", key="voltage")],
+    [sg.Text("Arm Clock Speed: ", key="arm_clock_speed")],
+    [sg.Text("Pixel Clock Speed: ", key="pixel_clock_speed")],
+    [sg.Text("SDRAM Voltage: ", key="sdram_voltage")],
+    [sg.Button("Exit")]
+]
+
+window = sg.Window("Client GUI", layout, finalize=True)
+
+try:
+    for i in range(51):
+        v = os.popen('vcgencmd measure_volts ain1').readline()
+        core = os.popen('vcgencmd measure_temp').readline()
+        arm_clock_speed = os.popen('vcgencmd measure_clock arm').readline()
+        pixel_clock_speed = os.popen('vcgencmd measure_clock pixel').readline()
+        sdram_voltage = os.popen('vcgencmd measure_volts sdram_p').readline()
+
+        JsonResult = {
+            "thing": [{"temp": core.strip()}],
+            "volts": v,
+            "arm_clock_speed": arm_clock_speed,
+            "pixel_clock_speed": pixel_clock_speed,
+            "sdram_voltage": sdram_voltage,
+            "iteration": i
+        }
+        
+        JsonResult = json.dumps(JsonResult)
+        json_data = json.loads(JsonResult)
+
+        window["iteration"].update(f"Iteration: {json_data['iteration']}")
+        window["core_temp"].update(f"Core Temperature: {json_data['thing'][0]['temp']}")
+        window["voltage"].update(f"Voltage: {json_data['volts']}")
+        window["arm_clock_speed"].update(f"Arm Clock Speed: {json_data['arm_clock_speed']}")
+        window["pixel_clock_speed"].update(f"Pixel Clock Speed: {json_data['pixel_clock_speed']}")
+        window["sdram_voltage"].update(f"SDRAM Voltage: {json_data['sdram_voltage']}")
+
+        sock.send(bytearray(JsonResult, "UTF-8"))
+        time.sleep(2)
+
+        event, values = window.read(timeout=0)
+        if event == sg.WIN_CLOSED or event == "Exit":
+            break
+except Exception as e:
+    print(f"Error: {e}")
+finally:
+    window.close()
+====================================================================
