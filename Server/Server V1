@@ -1,0 +1,49 @@
+import socket
+import json
+import time
+
+sock = socket.socket()
+print("Socket created ...")
+
+port = 1500
+sock.bind(('10.102.13.82', port))  
+sock.listen(5)
+
+print('Socket is listening...')
+c, addr = sock.accept()
+print('Got connection from', addr) 
+
+def main():
+    try:
+        while True:
+            json_received = c.recv(1024)
+            print("Json received (byte type) -->", json_received)
+            if not json_received:
+                print("Oops")
+                exit()
+
+            data = json.loads(json_received)
+            ret1 = data["thing"][0]["temp"]
+            ret2 = data["volts"]
+            ret3 = data["arm_clock_speed"]
+            ret4 = data["pixel_clock_speed"]
+            ret5 = data["sdram_voltage"]
+            ret6 = data["iteration"]
+
+            print("Received data:")
+            print("Core Temperature:", ret1)
+            print("Voltage:", ret2)
+            print("Arm Clock Speed:", ret3)
+            print("Pixel Clock Speed:", ret4)
+            print("SDRAM Voltage:", ret5)
+            print("Iteration:", ret6)
+
+            time.sleep(1)
+
+    except KeyboardInterrupt:
+        print("Bye....")
+        exit()
+
+if __name__ == '__main__':
+    main()
+
