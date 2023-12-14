@@ -1,0 +1,75 @@
+import socket
+import json
+import time
+import os
+from pathlib import Path
+import PySimpleGUI as sg
+
+IS_RPI = Path("/etc/rpi-issue").exists() 
+
+if IS_RPI:
+    print("Correct Hardware")
+    try:
+        sock = socket.socket()
+    except socket.error as err:
+        print('Socket error because of %s' % (err))
+        sys.exit(1)
+
+    port = 1501
+    address = "10.102.13.82"  
+
+    try:
+        sock.connect((address, port))
+        connection_status = "Connected to Server"
+    except socket.gaierror:
+        connection_status = "Not Connected to Server - Error resolving host"
+    except socket.error as e:
+        connection_status = f"Not Connected to Server - Socket error: {e}"
+
+layout = [
+    [sg.Text("Iteration: ", key="iteration_text"), sg.Text('', size=(4, 1), font=('Any', 20), justification='center', key='-LEDO-')],
+    [sg.Text(connection_status, key="connection_status")],
+    [sg.Button("Exit")]
+]
+
+window = sg.Window("Client GUI", layout, finalize=True)
+prev_iteration = -1
+
+try:
+    for i in range(51):
+        v = os.popen('vcgencmd measure_volts ain1').readline()
+        core = os.popen('vcgencmd measure_temp').readline()
+        arm_clock_speed = os.popen('vcgencmd measure_clock arm').readline()
+        pixel_clock_speed = os.popen('vcgencmd measure_clock pixel').readline()
+        sdram_voltage = os.popen('vcgencmd measure_volts sdram_p').readline()
+
+        JsonResult = {
+            "thing": [{"temp": core.strip()}],
+            "volts": v,
+            "arm_clock_speed": arm_clock_speed,
+            "pixel_clock_speed": pixel_clock_speed,
+            "sdram_voltage": sdram_voltage,
+            "iteration": i
+        }
+        
+        JsonResult = json.dumps(JsonResult)
+        json_data = json.loads(JsonResult)
+
+        if json_data["iteration"] != prev_iteration:
+            window["-LEDO-"].update('O' if json_data["iteration"] % 2 == 0 else '●')
+            time.sleep(0.5)
+            prev_iteration = json_data["iteration"]
+
+        window["iteration_text"].update(f"Iteration: {json_data['iteration']}")
+        window["connection_status"].update(connection_status)
+
+        sock.send(bytearray(JsonResult, "UTF-8"))
+        time.sleep(2)
+
+        event, values = window.read(timeout=0)
+        if event == sg.WIN_CLOSED or event == "Exit":
+            break
+except Exception as e:
+    print(f"Error: {e}")
+finally:
+    window.close()
